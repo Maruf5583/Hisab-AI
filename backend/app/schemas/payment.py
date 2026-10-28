@@ -36,10 +36,15 @@ class PaymentCreate(PaymentBase):
     allocations: Optional[List[PaymentAllocationCreate]] = None
 
 
+class PaymentAllocateBatchRequest(BaseModel):
+    allocations: List[PaymentAllocationCreate] = Field(..., min_length=1)
+
+
 class PaymentRead(PaymentBase):
     id: UUID
     business_id: UUID
     document_id: Optional[UUID] = None
+    party_name: Optional[str] = None
     allocated_amount: Decimal
     unapplied_amount: Decimal
     status: str

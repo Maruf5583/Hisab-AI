@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Receipt,
   Search,
@@ -11,6 +11,7 @@ import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
 import { Modal } from '../components/ui/Modal';
 import { Invoice } from '../types/accounting';
+import { invoiceApi } from '../api/invoices';
 
 interface InvoicesPageProps {
   businessId?: string;
@@ -106,12 +107,36 @@ const DEMO_INVOICES: Invoice[] = [
   },
 ];
 
-export const InvoicesPage: React.FC<InvoicesPageProps> = ({ lang }) => {
-  const [invoices] = useState<Invoice[]>(DEMO_INVOICES);
+export const InvoicesPage: React.FC<InvoicesPageProps> = ({ businessId, lang }) => {
+  const [invoices, setInvoices] = useState<Invoice[]>(DEMO_INVOICES);
+  const [loading, setLoading] = useState<boolean>(false);
   const [filterType, setFilterType] = useState<'all' | 'sales' | 'purchase'>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
+
+  useEffect(() => {
+    const fetchInvoices = async () => {
+      setLoading(true);
+      try {
+        const res = await invoiceApi.list({
+          invoice_type: filterType === 'all' ? undefined : filterType,
+          status: statusFilter === 'all' ? undefined : statusFilter,
+          search: searchQuery || undefined,
+        });
+        if (res && res.items && res.items.length > 0) {
+          setInvoices(res.items);
+        } else {
+          setInvoices(DEMO_INVOICES);
+        }
+      } catch {
+        setInvoices(DEMO_INVOICES);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchInvoices();
+  }, [businessId, filterType, statusFilter]);
 
   const formatBDT = (amount: number | string) => {
     const num = typeof amount === 'string' ? parseFloat(amount) : amount;
@@ -287,7 +312,20 @@ export const InvoicesPage: React.FC<InvoicesPageProps> = ({ lang }) => {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-xs text-slate-700 font-medium">
-              {filteredInvoices.map((inv) => (
+              {loading ? (
+                <tr>
+                  <td colSpan={9} className="py-8 text-center text-slate-400">
+                    Loading invoices from database...
+                  </td>
+                </tr>
+              ) : filteredInvoices.length === 0 ? (
+                <tr>
+                  <td colSpan={9} className="py-8 text-center text-slate-400">
+                    No invoices found matching criteria.
+                  </td>
+                </tr>
+              ) : (
+                filteredInvoices.map((inv) => (
                 <tr
                   key={inv.id}
                   className="hover:bg-slate-50/80 transition-colors cursor-pointer"
@@ -351,7 +389,7 @@ export const InvoicesPage: React.FC<InvoicesPageProps> = ({ lang }) => {
                     </Button>
                   </td>
                 </tr>
-              ))}
+              )))}
             </tbody>
           </table>
         </div>

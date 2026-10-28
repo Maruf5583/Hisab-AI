@@ -46,6 +46,7 @@ class InvoiceRead(InvoiceBase):
     id: UUID
     business_id: UUID
     document_id: Optional[UUID] = None
+    party_name: Optional[str] = None
     paid_amount: Decimal
     due_amount: Decimal
     status: str

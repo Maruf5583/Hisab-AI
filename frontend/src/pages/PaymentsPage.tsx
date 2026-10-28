@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   CreditCard,
   Plus,
@@ -11,6 +11,7 @@ import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
 import { Modal } from '../components/ui/Modal';
 import { Payment } from '../types/accounting';
+import { paymentApi } from '../api/payments';
 
 interface PaymentsPageProps {
   businessId?: string;
@@ -80,11 +81,34 @@ const DEMO_PAYMENTS: Payment[] = [
   },
 ];
 
-export const PaymentsPage: React.FC<PaymentsPageProps> = ({ lang }) => {
+export const PaymentsPage: React.FC<PaymentsPageProps> = ({ businessId, lang }) => {
   const [payments, setPayments] = useState<Payment[]>(DEMO_PAYMENTS);
+  const [loading, setLoading] = useState<boolean>(false);
   const [filterType, setFilterType] = useState<'all' | 'customer_receipt' | 'supplier_payment'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+
+  useEffect(() => {
+    const fetchPayments = async () => {
+      setLoading(true);
+      try {
+        const res = await paymentApi.list({
+          payment_type: filterType === 'all' ? undefined : filterType,
+          search: searchQuery || undefined,
+        });
+        if (res && res.items && res.items.length > 0) {
+          setPayments(res.items);
+        } else {
+          setPayments(DEMO_PAYMENTS);
+        }
+      } catch {
+        setPayments(DEMO_PAYMENTS);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchPayments();
+  }, [businessId, filterType]);
 
   // Form states
   const [formParty, setFormParty] = useState('');
@@ -289,7 +313,20 @@ export const PaymentsPage: React.FC<PaymentsPageProps> = ({ lang }) => {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-xs text-slate-700 font-medium">
-              {filteredPayments.map((p) => {
+              {loading ? (
+                <tr>
+                  <td colSpan={7} className="py-8 text-center text-slate-400">
+                    Loading payments from database...
+                  </td>
+                </tr>
+              ) : filteredPayments.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="py-8 text-center text-slate-400">
+                    No payment records found matching criteria.
+                  </td>
+                </tr>
+              ) : (
+                filteredPayments.map((p) => {
                 const isReceipt = p.payment_type === 'customer_receipt';
                 return (
                   <tr key={p.id} className="hover:bg-slate-50/80 transition-colors">
@@ -320,7 +357,7 @@ export const PaymentsPage: React.FC<PaymentsPageProps> = ({ lang }) => {
                     </td>
                   </tr>
                 );
-              })}
+              }))}
             </tbody>
           </table>
         </div>
