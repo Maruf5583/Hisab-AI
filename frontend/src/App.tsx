@@ -182,6 +182,7 @@ export const App: React.FC = () => {
         <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
           {currentTab === 'dashboard' && (
             <DashboardPage
+              businessId={activeBusiness?.id}
               onNavigateToUpload={() => setCurrentTab('documents')}
               onNavigateToReview={() => {
                 setSelectedDocId(null);

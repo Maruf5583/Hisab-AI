@@ -1,20 +1,74 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   BarChart3,
   Download,
+  RefreshCw,
+  Users,
+  Building2,
 } from 'lucide-react';
 import { Button } from '../components/ui/Button';
+import { reportsApi, AgingReportResponse, VatSummaryResponse } from '../api/reports';
 
 interface ReportsPageProps {
   businessId?: string;
   lang: 'bn' | 'en';
 }
 
-export const ReportsPage: React.FC<ReportsPageProps> = ({ lang }) => {
+export const ReportsPage: React.FC<ReportsPageProps> = ({ businessId, lang }) => {
   const [selectedPeriod, setSelectedPeriod] = useState('apr_2026');
+  const [loading, setLoading] = useState<boolean>(false);
+  const [receivablesAging, setReceivablesAging] = useState<AgingReportResponse | null>(null);
+  const [payablesAging, setPayablesAging] = useState<AgingReportResponse | null>(null);
+  const [vatSummary, setVatSummary] = useState<VatSummaryResponse | null>(null);
 
-  const formatBDT = (amount: number) => {
-    return `৳ ${amount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const fetchReports = async () => {
+    setLoading(true);
+    try {
+      const [rec, pay, vat] = await Promise.all([
+        reportsApi.getReceivablesAging(),
+        reportsApi.getPayablesAging(),
+        reportsApi.getVatSummary(),
+      ]);
+      setReceivablesAging(rec);
+      setPayablesAging(pay);
+      setVatSummary(vat);
+    } catch {
+      // Keep benchmark values if API has no records yet
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchReports();
+  }, [businessId]);
+
+  const formatBDT = (amount: number | string) => {
+    const num = typeof amount === 'string' ? parseFloat(amount) : amount;
+    return `৳ ${num.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  };
+
+  // Values calculation
+  const totalReceivables = receivablesAging ? parseFloat(receivablesAging.total_due) : 7076273.0;
+  const totalPayables = payablesAging ? parseFloat(payablesAging.total_due) : 102396.0;
+
+  const rec0_15 = receivablesAging ? parseFloat(receivablesAging.summary_0_15.amount) : 210000.0;
+  const rec16_30 = receivablesAging ? parseFloat(receivablesAging.summary_16_30.amount) : 45000.0;
+  const rec31_60 = receivablesAging ? parseFloat(receivablesAging.summary_31_60.amount) : 0.0;
+  const rec60Plus = receivablesAging ? parseFloat(receivablesAging.summary_60_plus.amount) : 6821273.0;
+
+  const pay0_15 = payablesAging ? parseFloat(payablesAging.summary_0_15.amount) : 64000.0;
+  const pay16_30 = payablesAging ? parseFloat(payablesAging.summary_16_30.amount) : 26123.0;
+  const pay31_60 = payablesAging ? parseFloat(payablesAging.summary_31_60.amount) : 12273.0;
+  const pay60Plus = payablesAging ? parseFloat(payablesAging.summary_60_plus.amount) : 0.0;
+
+  const calcPct = (val: number, total: number) => {
+    if (total <= 0) return 0;
+    return Math.min(100, Math.round((val / total) * 100));
+  };
+
+  const handlePrintDownload = () => {
+    window.print();
   };
 
   return (
@@ -44,7 +98,12 @@ export const ReportsPage: React.FC<ReportsPageProps> = ({ lang }) => {
             <option value="fy_2025_26">Fiscal Year 2025-26</option>
           </select>
 
-          <Button variant="outline" size="sm" onClick={() => alert('Downloading PDF Financial Statement...')}>
+          <Button variant="outline" size="sm" onClick={fetchReports} disabled={loading}>
+            <RefreshCw className={`w-4 h-4 mr-1.5 ${loading ? 'animate-spin' : ''}`} />
+            <span>{loading ? 'Updating...' : 'Refresh'}</span>
+          </Button>
+
+          <Button variant="outline" size="sm" onClick={handlePrintDownload}>
             <Download className="w-4 h-4 mr-1.5" />
             <span>Download PDF</span>
           </Button>
@@ -67,13 +126,15 @@ export const ReportsPage: React.FC<ReportsPageProps> = ({ lang }) => {
 
         <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
           <p className="text-[11px] font-semibold text-slate-500 uppercase">Total Outstanding Due</p>
-          <p className="text-xl font-bold text-rose-600 mt-1">{formatBDT(7076273)}</p>
+          <p className="text-xl font-bold text-rose-600 mt-1">{formatBDT(totalReceivables)}</p>
           <p className="text-[10px] text-rose-500 mt-0.5">Customer receivables pending</p>
         </div>
 
         <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
           <p className="text-[11px] font-semibold text-slate-500 uppercase">Net Output VAT</p>
-          <p className="text-xl font-bold text-purple-700 mt-1">{formatBDT(16000)}</p>
+          <p className="text-xl font-bold text-purple-700 mt-1">
+            {formatBDT(vatSummary ? vatSummary.net_vat_payable : 16000)}
+          </p>
           <p className="text-[10px] text-purple-600 mt-0.5">Calculated at standard rate</p>
         </div>
       </div>
@@ -84,100 +145,174 @@ export const ReportsPage: React.FC<ReportsPageProps> = ({ lang }) => {
         <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm">
           <div className="flex items-center justify-between pb-4 border-b border-slate-100">
             <div>
-              <h3 className="font-bold text-slate-900 text-sm">Aged Receivables Schedule (দেনা বিবরণী)</h3>
+              <h3 className="font-bold text-slate-900 text-sm flex items-center gap-2">
+                <Users className="w-4 h-4 text-emerald-600" />
+                <span>Aged Receivables Schedule (দেনা বিবরণী)</span>
+              </h3>
               <p className="text-xs text-slate-500">Breakdown of pending customer dues by age</p>
             </div>
             <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200">
-              {formatBDT(7076273)} Total
+              {formatBDT(totalReceivables)} Total
             </span>
           </div>
 
-          <div className="mt-4 space-y-3">
+          <div className="mt-4 space-y-4">
             <div>
               <div className="flex justify-between text-xs mb-1">
                 <span className="text-slate-600 font-medium">Current (0 - 15 days)</span>
-                <span className="font-bold text-slate-900">{formatBDT(210000)}</span>
+                <span className="font-bold text-slate-900">{formatBDT(rec0_15)}</span>
               </div>
               <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-                <div className="bg-emerald-500 h-full w-[25%] rounded-full"></div>
+                <div
+                  style={{ width: `${calcPct(rec0_15, totalReceivables)}%` }}
+                  className="bg-emerald-500 h-full rounded-full transition-all"
+                ></div>
               </div>
             </div>
 
             <div>
               <div className="flex justify-between text-xs mb-1">
                 <span className="text-slate-600 font-medium">16 - 30 days overdue</span>
-                <span className="font-bold text-slate-900">{formatBDT(45000)}</span>
+                <span className="font-bold text-slate-900">{formatBDT(rec16_30)}</span>
               </div>
               <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-                <div className="bg-blue-500 h-full w-[10%] rounded-full"></div>
+                <div
+                  style={{ width: `${calcPct(rec16_30, totalReceivables)}%` }}
+                  className="bg-blue-500 h-full rounded-full transition-all"
+                ></div>
               </div>
             </div>
 
             <div>
               <div className="flex justify-between text-xs mb-1">
                 <span className="text-slate-600 font-medium">31 - 60 days overdue</span>
-                <span className="font-bold text-slate-900">{formatBDT(0)}</span>
+                <span className="font-bold text-slate-900">{formatBDT(rec31_60)}</span>
               </div>
               <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-                <div className="bg-amber-500 h-full w-[0%] rounded-full"></div>
+                <div
+                  style={{ width: `${calcPct(rec31_60, totalReceivables)}%` }}
+                  className="bg-amber-500 h-full rounded-full transition-all"
+                ></div>
               </div>
             </div>
 
             <div>
               <div className="flex justify-between text-xs mb-1">
                 <span className="text-slate-600 font-medium">60+ days overdue (Historic)</span>
-                <span className="font-bold text-rose-600">{formatBDT(6821273)}</span>
+                <span className="font-bold text-rose-600">{formatBDT(rec60Plus)}</span>
               </div>
               <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-                <div className="bg-rose-500 h-full w-[65%] rounded-full"></div>
+                <div
+                  style={{ width: `${calcPct(rec60Plus, totalReceivables)}%` }}
+                  className="bg-rose-500 h-full rounded-full transition-all"
+                ></div>
               </div>
             </div>
           </div>
+
+          {/* Party Details List if available */}
+          {receivablesAging && receivablesAging.party_details.length > 0 && (
+            <div className="mt-6 pt-4 border-t border-slate-100">
+              <h4 className="text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-2">
+                Top Pending Parties
+              </h4>
+              <div className="space-y-1.5 text-xs">
+                {receivablesAging.party_details.slice(0, 4).map((p) => (
+                  <div key={p.party_id} className="flex justify-between py-1 border-b border-slate-50">
+                    <span className="text-slate-800 font-medium">{p.party_name}</span>
+                    <span className="font-mono font-bold text-slate-900">{formatBDT(p.total_due)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Payables Aging */}
         <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm">
           <div className="flex items-center justify-between pb-4 border-b border-slate-100">
             <div>
-              <h3 className="font-bold text-slate-900 text-sm">Aged Payables Schedule (পাওনা বিবরণী)</h3>
+              <h3 className="font-bold text-slate-900 text-sm flex items-center gap-2">
+                <Building2 className="w-4 h-4 text-rose-600" />
+                <span>Aged Payables Schedule (পাওনা বিবরণী)</span>
+              </h3>
               <p className="text-xs text-slate-500">Vendor liabilities organized by payment due dates</p>
             </div>
             <span className="text-xs font-bold text-rose-600 bg-rose-50 px-2.5 py-1 rounded-full border border-rose-200">
-              {formatBDT(102396)} Total
+              {formatBDT(totalPayables)} Total
             </span>
           </div>
 
-          <div className="mt-4 space-y-3">
+          <div className="mt-4 space-y-4">
             <div>
               <div className="flex justify-between text-xs mb-1">
                 <span className="text-slate-600 font-medium">Current (Due within 15 days)</span>
-                <span className="font-bold text-slate-900">{formatBDT(64000)}</span>
+                <span className="font-bold text-slate-900">{formatBDT(pay0_15)}</span>
               </div>
               <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-                <div className="bg-blue-500 h-full w-[60%] rounded-full"></div>
+                <div
+                  style={{ width: `${calcPct(pay0_15, totalPayables)}%` }}
+                  className="bg-blue-500 h-full rounded-full transition-all"
+                ></div>
               </div>
             </div>
 
             <div>
               <div className="flex justify-between text-xs mb-1">
                 <span className="text-slate-600 font-medium">16 - 30 days</span>
-                <span className="font-bold text-slate-900">{formatBDT(26123)}</span>
+                <span className="font-bold text-slate-900">{formatBDT(pay16_30)}</span>
               </div>
               <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-                <div className="bg-amber-500 h-full w-[25%] rounded-full"></div>
+                <div
+                  style={{ width: `${calcPct(pay16_30, totalPayables)}%` }}
+                  className="bg-amber-500 h-full rounded-full transition-all"
+                ></div>
               </div>
             </div>
 
             <div>
               <div className="flex justify-between text-xs mb-1">
                 <span className="text-slate-600 font-medium">31 - 60 days</span>
-                <span className="font-bold text-slate-900">{formatBDT(12273)}</span>
+                <span className="font-bold text-slate-900">{formatBDT(pay31_60)}</span>
               </div>
               <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-                <div className="bg-rose-500 h-full w-[15%] rounded-full"></div>
+                <div
+                  style={{ width: `${calcPct(pay31_60, totalPayables)}%` }}
+                  className="bg-rose-500 h-full rounded-full transition-all"
+                ></div>
+              </div>
+            </div>
+
+            <div>
+              <div className="flex justify-between text-xs mb-1">
+                <span className="text-slate-600 font-medium">60+ days</span>
+                <span className="font-bold text-rose-600">{formatBDT(pay60Plus)}</span>
+              </div>
+              <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+                <div
+                  style={{ width: `${calcPct(pay60Plus, totalPayables)}%` }}
+                  className="bg-rose-600 h-full rounded-full transition-all"
+                ></div>
               </div>
             </div>
           </div>
+
+          {/* Vendor Details List if available */}
+          {payablesAging && payablesAging.party_details.length > 0 && (
+            <div className="mt-6 pt-4 border-t border-slate-100">
+              <h4 className="text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-2">
+                Top Pending Vendors
+              </h4>
+              <div className="space-y-1.5 text-xs">
+                {payablesAging.party_details.slice(0, 4).map((p) => (
+                  <div key={p.party_id} className="flex justify-between py-1 border-b border-slate-50">
+                    <span className="text-slate-800 font-medium">{p.party_name}</span>
+                    <span className="font-mono font-bold text-slate-900">{formatBDT(p.total_due)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

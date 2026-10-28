@@ -31,6 +31,8 @@ export const DocumentReviewPage: React.FC<DocumentReviewPageProps> = ({
   const [saving, setSaving] = useState<boolean>(false);
   const [zoomLevel, setZoomLevel] = useState<number>(100);
   const [activeHighlight, setActiveHighlight] = useState<string | null>(null);
+  const [fileBlobUrl, setFileBlobUrl] = useState<string | null>(null);
+  const [previewMode, setPreviewMode] = useState<'file' | 'structured'>('file');
 
   // Form Fields State
   const [docNumber, setDocNumber] = useState<string>('');
@@ -126,6 +128,43 @@ export const DocumentReviewPage: React.FC<DocumentReviewPageProps> = ({
 
     fetchDoc();
   }, [documentId]);
+
+  useEffect(() => {
+    let objectUrl: string | null = null;
+    const loadOriginalFile = async () => {
+      if (!doc?.id || doc.id.startsWith('demo')) {
+        setPreviewMode('structured');
+        return;
+      }
+      try {
+        const token = localStorage.getItem('hisabai_token');
+        const activeBizId = localStorage.getItem('hisabai_active_business_id');
+        const headers: Record<string, string> = {};
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+        if (activeBizId) headers['X-Business-Id'] = activeBizId;
+
+        const res = await fetch(`/api/v1/documents/${doc.id}/download`, { headers });
+        if (res.ok) {
+          const blob = await res.blob();
+          objectUrl = URL.createObjectURL(blob);
+          setFileBlobUrl(objectUrl);
+          setPreviewMode('file');
+        } else {
+          setPreviewMode('structured');
+        }
+      } catch (err) {
+        console.warn('Failed to load document file blob:', err);
+        setPreviewMode('structured');
+      }
+    };
+
+    loadOriginalFile();
+    return () => {
+      if (objectUrl) {
+        URL.revokeObjectURL(objectUrl);
+      }
+    };
+  }, [doc?.id]);
 
   const handleSaveDraft = async () => {
     if (!doc) return;
@@ -255,6 +294,31 @@ export const DocumentReviewPage: React.FC<DocumentReviewPageProps> = ({
               <ZoomIn className="w-3.5 h-3.5" />
             </button>
           </div>
+
+          {fileBlobUrl && (
+            <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-lg border border-slate-200">
+              <button
+                onClick={() => setPreviewMode('file')}
+                className={`px-2 py-0.5 text-[11px] font-semibold rounded transition-colors ${
+                  previewMode === 'file'
+                    ? 'bg-blue-600 text-white shadow-sm'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                {lang === 'bn' ? 'মূল ফাইল' : 'Original File'}
+              </button>
+              <button
+                onClick={() => setPreviewMode('structured')}
+                className={`px-2 py-0.5 text-[11px] font-semibold rounded transition-colors ${
+                  previewMode === 'structured'
+                    ? 'bg-blue-600 text-white shadow-sm'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                {lang === 'bn' ? 'স্ট্রাকচার্ড ভিউ' : 'Structured View'}
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Right Header: Extracted Fields & Confidence */}
@@ -271,108 +335,145 @@ export const DocumentReviewPage: React.FC<DocumentReviewPageProps> = ({
       <div className="flex-1 flex overflow-hidden">
         {/* Left Pane: Original Document Preview */}
         <div className="w-1/2 bg-slate-850 p-6 overflow-auto flex items-start justify-center relative border-r border-slate-700/60 shadow-inner">
-          <div
-            style={{ transform: `scale(${zoomLevel / 100})`, transformOrigin: 'top center' }}
-            className="transition-transform duration-100 relative bg-white rounded-lg shadow-2xl p-8 w-[580px] min-h-[780px] text-slate-800 text-xs leading-relaxed"
-          >
-            {/* Header / Brand */}
-            <div className="flex items-start justify-between pb-6 border-b border-slate-200">
-              <div>
-                <div className="flex items-center gap-2 mb-1">
-                  <div className="w-6 h-6 bg-blue-600 rounded flex items-center justify-center text-white font-bold text-xs">
-                    N
-                  </div>
-                  <h2 className="font-extrabold text-base tracking-tight text-slate-900">NEXORA SOLUTIONS</h2>
-                </div>
-                <p className="text-[10px] text-slate-500">123 Innovation Way, Suite 400</p>
-                <p className="text-[10px] text-slate-500">Austin, TX 78701 • contact@nexora.com</p>
-              </div>
-              <div className="text-right">
-                <span className="text-xl font-extrabold tracking-tight text-slate-900 block">INVOICE</span>
-                <span className={`inline-block font-mono font-semibold px-1 rounded transition-colors ${activeHighlight === 'docNumber' ? 'bg-amber-300 ring-2 ring-amber-500' : ''}`}>
-                  {docNumber || 'INV-2026-0417'}
-                </span>
-              </div>
+          {previewMode === 'file' && fileBlobUrl ? (
+            <div
+              style={{ transform: `scale(${zoomLevel / 100})`, transformOrigin: 'top center' }}
+              className="w-full h-full min-h-[780px] bg-white rounded-lg shadow-2xl overflow-hidden flex items-center justify-center"
+            >
+              {doc?.mime_type === 'application/pdf' ? (
+                <iframe
+                  src={fileBlobUrl}
+                  title="Original PDF Document"
+                  className="w-full h-[780px] border-0"
+                />
+              ) : (
+                <img
+                  src={fileBlobUrl}
+                  alt="Original Document Upload"
+                  className="max-w-full max-h-[780px] object-contain rounded"
+                />
+              )}
             </div>
-
-            {/* Bill To & Dates */}
-            <div className="grid grid-cols-2 gap-4 py-4 text-[11px] border-b border-slate-100">
-              <div>
-                <span className="text-slate-400 block font-medium">Billed To:</span>
-                <span className={`font-semibold block text-slate-900 ${activeHighlight === 'party' ? 'bg-amber-300 ring-2 ring-amber-500' : ''}`}>
-                  {partyName || 'মেসার্স রহিম ব্রাদার্স'}
-                </span>
-                <span className="text-slate-500 block">ঢাকা, বাংলাদেশ</span>
-              </div>
-              <div className="text-right space-y-1">
+          ) : (
+            <div
+              style={{ transform: `scale(${zoomLevel / 100})`, transformOrigin: 'top center' }}
+              className="transition-transform duration-100 relative bg-white rounded-lg shadow-2xl p-8 w-[580px] min-h-[780px] text-slate-800 text-xs leading-relaxed"
+            >
+              {/* Header / Brand */}
+              <div className="flex items-start justify-between pb-6 border-b border-slate-200">
                 <div>
-                  <span className="text-slate-400 mr-2">Invoice Date:</span>
-                  <span className={`font-mono font-medium ${activeHighlight === 'date' ? 'bg-amber-300 ring-2 ring-amber-500' : ''}`}>
-                    {issueDate}
+                  <div className="flex items-center gap-2 mb-1">
+                    <div className="w-6 h-6 bg-blue-600 rounded flex items-center justify-center text-white font-bold text-xs">
+                      N
+                    </div>
+                    <h2 className="font-extrabold text-base tracking-tight text-slate-900">NEXORA SOLUTIONS</h2>
+                  </div>
+                  <p className="text-[10px] text-slate-500">123 Innovation Way, Suite 400</p>
+                  <p className="text-[10px] text-slate-500">Austin, TX 78701 • contact@nexora.com</p>
+                </div>
+                <div className="text-right">
+                  <span className="text-xl font-extrabold tracking-tight text-slate-900 block">INVOICE</span>
+                  <span
+                    className={`inline-block font-mono font-semibold px-1 rounded transition-colors ${
+                      activeHighlight === 'docNumber' ? 'bg-amber-300 ring-2 ring-amber-500' : ''
+                    }`}
+                  >
+                    {docNumber || 'INV-2026-0417'}
                   </span>
                 </div>
+              </div>
+
+              {/* Bill To & Dates */}
+              <div className="grid grid-cols-2 gap-4 py-4 text-[11px] border-b border-slate-100">
                 <div>
-                  <span className="text-slate-400 mr-2">Due Date:</span>
-                  <span className="font-mono font-medium">{dueDate || '2026-06-27'}</span>
+                  <span className="text-slate-400 block font-medium">Billed To:</span>
+                  <span
+                    className={`font-semibold block text-slate-900 ${
+                      activeHighlight === 'party' ? 'bg-amber-300 ring-2 ring-amber-500' : ''
+                    }`}
+                  >
+                    {partyName || 'মেসার্স রহিম ব্রাদার্স'}
+                  </span>
+                  <span className="text-slate-500 block">ঢাকা, বাংলাদেশ</span>
+                </div>
+                <div className="text-right space-y-1">
+                  <div>
+                    <span className="text-slate-400 mr-2">Invoice Date:</span>
+                    <span
+                      className={`font-mono font-medium ${
+                        activeHighlight === 'date' ? 'bg-amber-300 ring-2 ring-amber-500' : ''
+                      }`}
+                    >
+                      {issueDate}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 mr-2">Due Date:</span>
+                    <span className="font-mono font-medium">{dueDate || '2026-06-27'}</span>
+                  </div>
                 </div>
               </div>
-            </div>
 
-            {/* Simulated Line Items Table */}
-            <table className="w-full text-left text-[11px] my-4">
-              <thead>
-                <tr className="border-b border-slate-200 text-slate-500 font-semibold uppercase text-[10px]">
-                  <th className="py-2">Description</th>
-                  <th className="py-2 text-center">Qty</th>
-                  <th className="py-2 text-right">Unit Price</th>
-                  <th className="py-2 text-right">Amount</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                <tr>
-                  <td className="py-2 font-medium">Cloud Infrastructure Upgrade & Setup</td>
-                  <td className="py-2 text-center">2</td>
-                  <td className="py-2 text-right font-mono">৳ 5,000.00</td>
-                  <td className="py-2 text-right font-mono font-semibold">৳ 10,000.00</td>
-                </tr>
-                <tr>
-                  <td className="py-2 font-medium">Data Integration & ETL Automation</td>
-                  <td className="py-2 text-center">1</td>
-                  <td className="py-2 text-right font-mono">৳ 2,400.00</td>
-                  <td className="py-2 text-right font-mono font-semibold">৳ 2,400.00</td>
-                </tr>
-                <tr>
-                  <td className="py-2 font-medium">Security & Compliance Audit</td>
-                  <td className="py-2 text-center">1</td>
-                  <td className="py-2 text-right font-mono">৳ 1,500.00</td>
-                  <td className="py-2 text-right font-mono font-semibold">৳ 1,500.00</td>
-                </tr>
-              </tbody>
-            </table>
+              {/* Simulated Line Items Table */}
+              <table className="w-full text-left text-[11px] my-4">
+                <thead>
+                  <tr className="border-b border-slate-200 text-slate-500 font-semibold uppercase text-[10px]">
+                    <th className="py-2">Description</th>
+                    <th className="py-2 text-center">Qty</th>
+                    <th className="py-2 text-right">Unit Price</th>
+                    <th className="py-2 text-right">Amount</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  <tr>
+                    <td className="py-2 font-medium">Cloud Infrastructure Upgrade & Setup</td>
+                    <td className="py-2 text-center">2</td>
+                    <td className="py-2 text-right font-mono">৳ 5,000.00</td>
+                    <td className="py-2 text-right font-mono font-semibold">৳ 10,000.00</td>
+                  </tr>
+                  <tr>
+                    <td className="py-2 font-medium">Data Integration & ETL Automation</td>
+                    <td className="py-2 text-center">1</td>
+                    <td className="py-2 text-right font-mono">৳ 2,400.00</td>
+                    <td className="py-2 text-right font-mono font-semibold">৳ 2,400.00</td>
+                  </tr>
+                  <tr>
+                    <td className="py-2 font-medium">Security & Compliance Audit</td>
+                    <td className="py-2 text-center">1</td>
+                    <td className="py-2 text-right font-mono">৳ 1,500.00</td>
+                    <td className="py-2 text-right font-mono font-semibold">৳ 1,500.00</td>
+                  </tr>
+                </tbody>
+              </table>
 
-            {/* Totals Box matching Reference Image 3 */}
-            <div className="border-t border-slate-200 pt-4 flex justify-end">
-              <div className="w-56 space-y-1.5 text-[11px]">
-                <div className="flex justify-between text-slate-600">
-                  <span>Subtotal:</span>
-                  <span className="font-mono">৳ {subtotal}</span>
-                </div>
-                <div className="flex justify-between text-slate-600">
-                  <span>Tax (8.25%):</span>
-                  <span className="font-mono">৳ {taxAmount}</span>
-                </div>
-                <div className={`flex justify-between font-bold text-slate-900 border-t border-slate-300 pt-1.5 text-xs ${activeHighlight === 'total' ? 'bg-amber-300 ring-2 ring-amber-500' : ''}`}>
-                  <span>Total Due:</span>
-                  <span className="font-mono text-blue-600">৳ {totalAmount}</span>
+              {/* Totals Box matching Reference Image 3 */}
+              <div className="border-t border-slate-200 pt-4 flex justify-end">
+                <div className="w-56 space-y-1.5 text-[11px]">
+                  <div className="flex justify-between text-slate-600">
+                    <span>Subtotal:</span>
+                    <span className="font-mono">৳ {subtotal}</span>
+                  </div>
+                  <div className="flex justify-between text-slate-600">
+                    <span>Tax (8.25%):</span>
+                    <span className="font-mono">৳ {taxAmount}</span>
+                  </div>
+                  <div
+                    className={`flex justify-between font-bold text-slate-900 border-t border-slate-300 pt-1.5 text-xs ${
+                      activeHighlight === 'total' ? 'bg-amber-300 ring-2 ring-amber-500' : ''
+                    }`}
+                  >
+                    <span>Total Due:</span>
+                    <span className="font-mono text-blue-600">৳ {totalAmount}</span>
+                  </div>
                 </div>
               </div>
-            </div>
 
-            {/* Footer */}
-            <div className="mt-16 pt-4 border-t border-slate-100 text-[10px] text-slate-400 text-center">
-              Thank you for your business! Payment terms: Due in 30 days.
+              {/* Footer */}
+              <div className="mt-16 pt-4 border-t border-slate-100 text-[10px] text-slate-400 text-center">
+                Thank you for your business! Payment terms: Due in 30 days.
+              </div>
             </div>
-          </div>
+          )}
         </div>
 
         {/* Right Pane: Editable Fields & Confidence Verification */}

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Scale,
   CheckCircle2,
@@ -6,9 +6,11 @@ import {
   ShieldCheck,
   AlertTriangle,
   FileSpreadsheet,
+  RefreshCw,
 } from 'lucide-react';
 import { Button } from '../components/ui/Button';
 import { LedgerEntry } from '../types/accounting';
+import { ledgerApi, TrialBalanceResponse } from '../api/ledger';
 
 interface LedgerPageProps {
   businessId?: string;
@@ -22,7 +24,7 @@ const DEMO_LEDGER_ENTRIES: LedgerEntry[] = [
     transaction_type: 'opening_balance',
     reference_id: 'p-1',
     entry_date: '2026-04-01',
-    account_name: 'Accounts Receivable',
+    account_name: 'accounts_receivable',
     debit: '45000.00',
     credit: '0.00',
     party_id: 'p-1',
@@ -36,7 +38,7 @@ const DEMO_LEDGER_ENTRIES: LedgerEntry[] = [
     transaction_type: 'opening_balance',
     reference_id: 'p-1',
     entry_date: '2026-04-01',
-    account_name: 'Opening Balance Equity',
+    account_name: 'sales_revenue',
     debit: '0.00',
     credit: '45000.00',
     party_id: 'p-1',
@@ -50,7 +52,7 @@ const DEMO_LEDGER_ENTRIES: LedgerEntry[] = [
     transaction_type: 'opening_balance',
     reference_id: 'p-2',
     entry_date: '2026-04-01',
-    account_name: 'Opening Balance Equity',
+    account_name: 'purchase_expense',
     debit: '90123.00',
     credit: '0.00',
     party_id: 'p-2',
@@ -64,7 +66,7 @@ const DEMO_LEDGER_ENTRIES: LedgerEntry[] = [
     transaction_type: 'opening_balance',
     reference_id: 'p-2',
     entry_date: '2026-04-01',
-    account_name: 'Accounts Payable',
+    account_name: 'accounts_payable',
     debit: '0.00',
     credit: '90123.00',
     party_id: 'p-2',
@@ -78,7 +80,7 @@ const DEMO_LEDGER_ENTRIES: LedgerEntry[] = [
     transaction_type: 'invoice_posted',
     reference_id: 'inv-101',
     entry_date: '2026-04-18',
-    account_name: 'Accounts Receivable',
+    account_name: 'accounts_receivable',
     debit: '45000.00',
     credit: '0.00',
     party_id: 'p-1',
@@ -92,9 +94,9 @@ const DEMO_LEDGER_ENTRIES: LedgerEntry[] = [
     transaction_type: 'invoice_posted',
     reference_id: 'inv-101',
     entry_date: '2026-04-18',
-    account_name: 'Sales Revenue',
+    account_name: 'sales_revenue',
     debit: '0.00',
-    credit: '42000.00',
+    credit: '45000.00',
     party_id: 'p-1',
     description: 'Net sales revenue recognized',
     is_reversal: false,
@@ -103,16 +105,16 @@ const DEMO_LEDGER_ENTRIES: LedgerEntry[] = [
   {
     id: 'led-7',
     business_id: 'biz-default',
-    transaction_type: 'invoice_posted',
-    reference_id: 'inv-101',
-    entry_date: '2026-04-18',
-    account_name: 'Output Tax Payable',
-    debit: '0.00',
-    credit: '3000.00',
+    transaction_type: 'payment_posted',
+    reference_id: 'pay-201',
+    entry_date: '2026-04-21',
+    account_name: 'bank',
+    debit: '20000.00',
+    credit: '0.00',
     party_id: 'p-1',
-    description: 'VAT on sales invoice',
+    description: 'Customer payment received via bank/bKash',
     is_reversal: false,
-    created_at: '2026-04-18T10:00:00Z',
+    created_at: '2026-04-21T11:30:00Z',
   },
   {
     id: 'led-8',
@@ -120,21 +122,7 @@ const DEMO_LEDGER_ENTRIES: LedgerEntry[] = [
     transaction_type: 'payment_posted',
     reference_id: 'pay-201',
     entry_date: '2026-04-21',
-    account_name: 'bKash Merchant Account',
-    debit: '20000.00',
-    credit: '0.00',
-    party_id: 'p-1',
-    description: 'Customer payment received via bKash',
-    is_reversal: false,
-    created_at: '2026-04-21T11:30:00Z',
-  },
-  {
-    id: 'led-9',
-    business_id: 'biz-default',
-    transaction_type: 'payment_posted',
-    reference_id: 'pay-201',
-    entry_date: '2026-04-21',
-    account_name: 'Accounts Receivable',
+    account_name: 'accounts_receivable',
     debit: '0.00',
     credit: '20000.00',
     party_id: 'p-1',
@@ -144,19 +132,56 @@ const DEMO_LEDGER_ENTRIES: LedgerEntry[] = [
   },
 ];
 
-export const LedgerPage: React.FC<LedgerPageProps> = ({ lang }) => {
-  const [entries] = useState<LedgerEntry[]>(DEMO_LEDGER_ENTRIES);
+export const LedgerPage: React.FC<LedgerPageProps> = ({ businessId, lang }) => {
+  const [entries, setEntries] = useState<LedgerEntry[]>(DEMO_LEDGER_ENTRIES);
+  const [trialBalance, setTrialBalance] = useState<TrialBalanceResponse | null>(null);
+  const [loading, setLoading] = useState<boolean>(false);
   const [accountFilter, setAccountFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
+
+  const fetchLedgerData = async () => {
+    setLoading(true);
+    try {
+      const [listRes, tbRes] = await Promise.all([
+        ledgerApi.list({
+          account_name: accountFilter === 'all' ? undefined : accountFilter,
+          search: searchQuery || undefined,
+        }),
+        ledgerApi.getTrialBalance(),
+      ]);
+
+      if (listRes && listRes.items && listRes.items.length > 0) {
+        setEntries(listRes.items);
+      } else {
+        setEntries(DEMO_LEDGER_ENTRIES);
+      }
+
+      if (tbRes) {
+        setTrialBalance(tbRes);
+      }
+    } catch {
+      setEntries(DEMO_LEDGER_ENTRIES);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchLedgerData();
+  }, [businessId, accountFilter]);
 
   const formatBDT = (amount: number | string) => {
     const num = typeof amount === 'string' ? parseFloat(amount) : amount;
     return `৳ ${num.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   };
 
-  const totalDebit = entries.reduce((sum, e) => sum + parseFloat(e.debit || '0'), 0);
-  const totalCredit = entries.reduce((sum, e) => sum + parseFloat(e.credit || '0'), 0);
-  const isBalanced = Math.abs(totalDebit - totalCredit) < 0.01;
+  const totalDebit = trialBalance
+    ? parseFloat(trialBalance.grand_total_debit)
+    : entries.reduce((sum, e) => sum + parseFloat(e.debit || '0'), 0);
+  const totalCredit = trialBalance
+    ? parseFloat(trialBalance.grand_total_credit)
+    : entries.reduce((sum, e) => sum + parseFloat(e.credit || '0'), 0);
+  const isBalanced = trialBalance ? trialBalance.is_balanced : Math.abs(totalDebit - totalCredit) < 0.01;
 
   const accounts = Array.from(new Set(entries.map((e) => e.account_name)));
 
@@ -172,6 +197,28 @@ export const LedgerPage: React.FC<LedgerPageProps> = ({ lang }) => {
     }
     return true;
   });
+
+  const handleExportCSV = () => {
+    const headers = ['Entry Date', 'Account Name', 'Transaction Type', 'Description', 'Reference ID', 'Debit', 'Credit'];
+    const rows = filteredEntries.map((e) => [
+      e.entry_date,
+      `"${e.account_name}"`,
+      `"${e.transaction_type}"`,
+      `"${(e.description || '').replace(/"/g, '""')}"`,
+      `"${e.reference_id || ''}"`,
+      e.debit,
+      e.credit,
+    ]);
+
+    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement('a');
+    link.setAttribute('href', encodedUri);
+    link.setAttribute('download', `hisabai_general_ledger_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6">
@@ -194,11 +241,11 @@ export const LedgerPage: React.FC<LedgerPageProps> = ({ lang }) => {
         </div>
 
         <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => alert('Exporting complete audit trail to CSV...')}
-          >
+          <Button variant="outline" size="sm" onClick={fetchLedgerData} disabled={loading}>
+            <RefreshCw className={`w-4 h-4 mr-1.5 text-slate-600 ${loading ? 'animate-spin' : ''}`} />
+            <span>{loading ? 'Refreshing...' : 'Refresh'}</span>
+          </Button>
+          <Button variant="outline" size="sm" onClick={handleExportCSV}>
             <FileSpreadsheet className="w-4 h-4 mr-1.5 text-emerald-600" />
             <span>Export CSV</span>
           </Button>
@@ -260,7 +307,7 @@ export const LedgerPage: React.FC<LedgerPageProps> = ({ lang }) => {
               <option value="all">All Accounts ({accounts.length})</option>
               {accounts.map((acc) => (
                 <option key={acc} value={acc}>
-                  {acc}
+                  {acc.replace(/_/g, ' ').toUpperCase()}
                 </option>
               ))}
             </select>
@@ -295,7 +342,9 @@ export const LedgerPage: React.FC<LedgerPageProps> = ({ lang }) => {
                 <tr key={e.id} className="hover:bg-slate-50/80 transition-colors">
                   <td className="py-3 px-5 font-mono text-slate-500">{e.entry_date}</td>
                   <td className="py-3 px-5">
-                    <span className="font-semibold text-slate-900 block">{e.account_name}</span>
+                    <span className="font-semibold text-slate-900 block font-mono">
+                      {e.account_name.replace(/_/g, ' ').toUpperCase()}
+                    </span>
                   </td>
                   <td className="py-3 px-5">
                     <span className="inline-block px-2 py-0.5 rounded text-[10px] font-mono uppercase bg-slate-100 text-slate-600 border border-slate-200">

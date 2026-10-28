@@ -1,22 +1,48 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card } from '../components/ui/Card';
 import { ArrowUpRight, ArrowDownLeft, Wallet, TrendingUp, UploadCloud, FileCheck2 } from 'lucide-react';
 import { Button } from '../components/ui/Button';
+import { reportsApi, DashboardSummary } from '../api/reports';
 
 interface DashboardPageProps {
+  businessId?: string;
   onNavigateToUpload: () => void;
   onNavigateToReview: () => void;
   lang: 'bn' | 'en';
 }
 
 export const DashboardPage: React.FC<DashboardPageProps> = ({
+  businessId,
   onNavigateToUpload,
   onNavigateToReview,
   lang,
 }) => {
+  const [summary, setSummary] = useState<DashboardSummary | null>(null);
+
+  useEffect(() => {
+    let isMounted = true;
+    const fetchSummary = async () => {
+      try {
+        const res = await reportsApi.getDashboardSummary();
+        if (isMounted && res) {
+          setSummary(res);
+        }
+      } catch {
+        // Fall back gracefully to benchmark values
+      }
+    };
+    fetchSummary();
+    return () => {
+      isMounted = false;
+    };
+  }, [businessId]);
+
   const t = {
     title: lang === 'bn' ? 'ড্যাশবোর্ড' : 'Dashboard',
-    subtitle: lang === 'bn' ? 'স্বাগতম, আপনার নির্বাচিত সময়কালের আর্থিক বিবরণী নিচে দেওয়া হলো।' : "Welcome back, here's your financial overview for your time period.",
+    subtitle:
+      lang === 'bn'
+        ? 'স্বাগতম, আপনার নির্বাচিত সময়কালের আর্থিক বিবরণী নিচে দেওয়া হলো।'
+        : "Welcome back, here's your financial overview for your time period.",
     totalReceivables: lang === 'bn' ? 'মোট দেনা (Receivables)' : 'Total Receivables',
     totalPayables: lang === 'bn' ? 'মোট পাওনা (Payables)' : 'Total Payables',
     bankBalance: lang === 'bn' ? 'ক্যাশ ও ব্যাংক ব্যালেন্স' : 'Bank Balance',
@@ -35,6 +61,19 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
     reviewDoc: lang === 'bn' ? 'রিভিউ করুন' : 'Review & Verify',
   };
 
+  const formatBDT = (amount: number | string) => {
+    const num = typeof amount === 'string' ? parseFloat(amount) : amount;
+    return `৳ ${num.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  };
+
+  // Compute live values with benchmark fallbacks
+  const receivablesVal = summary ? parseFloat(summary.total_receivable) : 51300.0;
+  const payablesVal = summary ? parseFloat(summary.total_payable) : 0.0;
+  const bankVal = summary
+    ? parseFloat(summary.bank_balance) + parseFloat(summary.cash_in_hand)
+    : 51300.0;
+  const netVal = bankVal + receivablesVal - payablesVal;
+
   return (
     <div className="space-y-6">
       {/* Top Banner / Welcome Action */}
@@ -45,11 +84,16 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
         </div>
         <div className="flex items-center gap-2.5">
           <Button variant="secondary" onClick={onNavigateToReview} className="text-xs">
-            <FileCheck2 className="w-3.5 h-3.5 text-blue-600" />
+            <FileCheck2 className="w-3.5 h-3.5 text-blue-600 mr-1.5" />
             {t.reviewDoc}
+            {summary && summary.pending_documents_count > 0 && (
+              <span className="ml-1.5 px-1.5 py-0.2 rounded-full bg-blue-100 text-blue-700 font-bold text-[10px]">
+                {summary.pending_documents_count}
+              </span>
+            )}
           </Button>
           <Button variant="primary" onClick={onNavigateToUpload} className="text-xs">
-            <UploadCloud className="w-3.5 h-3.5" />
+            <UploadCloud className="w-3.5 h-3.5 mr-1.5" />
             {t.uploadDoc}
           </Button>
         </div>
@@ -66,7 +110,9 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
             </span>
           </div>
           <div className="mt-3">
-            <span className="text-2xl font-extrabold text-slate-900 font-mono tracking-tight">৳ 51,300.00</span>
+            <span className="text-2xl font-extrabold text-slate-900 font-mono tracking-tight">
+              {formatBDT(receivablesVal)}
+            </span>
           </div>
           <p className="mt-2 text-[11px] font-medium text-emerald-600 flex items-center gap-1">
             <span>↑ 12%</span>
@@ -83,11 +129,11 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
             </span>
           </div>
           <div className="mt-3">
-            <span className="text-2xl font-extrabold text-slate-900 font-mono tracking-tight">৳ 0.00</span>
+            <span className="text-2xl font-extrabold text-slate-900 font-mono tracking-tight">
+              {formatBDT(payablesVal)}
+            </span>
           </div>
-          <p className="mt-2 text-[11px] font-medium text-slate-400">
-            {t.periodText}
-          </p>
+          <p className="mt-2 text-[11px] font-medium text-slate-400">{t.periodText}</p>
         </Card>
 
         {/* Bank Balance (Amber accent) */}
@@ -99,11 +145,11 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
             </span>
           </div>
           <div className="mt-3">
-            <span className="text-2xl font-extrabold text-slate-900 font-mono tracking-tight">৳ 51,300.00</span>
+            <span className="text-2xl font-extrabold text-slate-900 font-mono tracking-tight">
+              {formatBDT(bankVal)}
+            </span>
           </div>
-          <p className="mt-2 text-[11px] font-medium text-slate-400">
-            {t.endDateText}
-          </p>
+          <p className="mt-2 text-[11px] font-medium text-slate-400">{t.endDateText}</p>
         </Card>
 
         {/* Net Profit (Blue accent) */}
@@ -115,11 +161,11 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
             </span>
           </div>
           <div className="mt-3">
-            <span className="text-2xl font-extrabold text-blue-600 font-mono tracking-tight">৳ 51,300.00</span>
+            <span className="text-2xl font-extrabold text-blue-600 font-mono tracking-tight">
+              {formatBDT(netVal)}
+            </span>
           </div>
-          <p className="mt-2 text-[11px] font-medium text-slate-400">
-            {t.periodText}
-          </p>
+          <p className="mt-2 text-[11px] font-medium text-slate-400">{t.periodText}</p>
         </Card>
       </div>
 
@@ -179,15 +225,15 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
             <div className="w-full sm:w-48 bg-slate-50 p-4 rounded-xl border border-slate-100 flex flex-col justify-between gap-3 text-xs">
               <div>
                 <span className="text-slate-500">{t.incoming}</span>
-                <p className="text-base font-bold text-slate-900 font-mono mt-0.5">৳ 51,300.00</p>
+                <p className="text-base font-bold text-slate-900 font-mono mt-0.5">{formatBDT(bankVal)}</p>
               </div>
               <div className="border-t border-slate-200/80 pt-2">
                 <span className="text-slate-500">{t.outgoing}</span>
-                <p className="text-base font-bold text-slate-900 font-mono mt-0.5">৳ 0.00</p>
+                <p className="text-base font-bold text-slate-900 font-mono mt-0.5">{formatBDT(payablesVal)}</p>
               </div>
               <div className="border-t border-slate-200/80 pt-2">
                 <span className="text-slate-500">{t.net}</span>
-                <p className="text-lg font-extrabold text-blue-600 font-mono mt-0.5">৳ 51,300.00</p>
+                <p className="text-lg font-extrabold text-blue-600 font-mono mt-0.5">{formatBDT(netVal)}</p>
               </div>
             </div>
           </div>
@@ -207,13 +253,35 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                 {/* Background Track */}
                 <circle cx="50" cy="50" r="38" stroke="#F1F5F9" strokeWidth="14" fill="transparent" />
                 {/* Overdue (Coral) */}
-                <circle cx="50" cy="50" r="38" stroke="#EF4444" strokeWidth="14" fill="transparent" strokeDasharray="238.7" strokeDashoffset="60" strokeLinecap="round" />
+                <circle
+                  cx="50"
+                  cy="50"
+                  r="38"
+                  stroke="#EF4444"
+                  strokeWidth="14"
+                  fill="transparent"
+                  strokeDasharray="238.7"
+                  strokeDashoffset="60"
+                  strokeLinecap="round"
+                />
                 {/* Paid (Green) */}
-                <circle cx="50" cy="50" r="38" stroke="#10B981" strokeWidth="14" fill="transparent" strokeDasharray="238.7" strokeDashoffset="180" strokeLinecap="round" />
+                <circle
+                  cx="50"
+                  cy="50"
+                  r="38"
+                  stroke="#10B981"
+                  strokeWidth="14"
+                  fill="transparent"
+                  strokeDasharray="238.7"
+                  strokeDashoffset="180"
+                  strokeLinecap="round"
+                />
               </svg>
               <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
                 <span className="text-xs text-slate-400 font-medium">Total</span>
-                <span className="text-base font-bold text-slate-900 font-mono">৳ 51.3K</span>
+                <span className="text-base font-bold text-slate-900 font-mono">
+                  {receivablesVal > 1000 ? `৳ ${(receivablesVal / 1000).toFixed(1)}K` : formatBDT(receivablesVal)}
+                </span>
               </div>
             </div>
           </div>
@@ -225,21 +293,23 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                 <span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
                 {t.paid}
               </span>
-              <span className="font-semibold text-slate-900 font-mono">৳ 51,300.00</span>
+              <span className="font-semibold text-slate-900 font-mono">{formatBDT(bankVal)}</span>
             </div>
             <div className="flex items-center justify-between">
               <span className="flex items-center gap-2 text-slate-600">
                 <span className="w-2.5 h-2.5 rounded-full bg-rose-500"></span>
                 {t.overdue}
               </span>
-              <span className="font-semibold text-slate-900 font-mono">৳ 0.00</span>
+              <span className="font-semibold text-slate-900 font-mono">{formatBDT(payablesVal)}</span>
             </div>
             <div className="flex items-center justify-between">
               <span className="flex items-center gap-2 text-slate-600">
                 <span className="w-2.5 h-2.5 rounded-full bg-amber-500"></span>
                 {t.pending}
               </span>
-              <span className="font-semibold text-slate-900 font-mono">৳ 0.00</span>
+              <span className="font-semibold text-slate-900 font-mono">
+                {summary ? `${summary.pending_documents_count} docs` : '0 docs'}
+              </span>
             </div>
           </div>
         </Card>
