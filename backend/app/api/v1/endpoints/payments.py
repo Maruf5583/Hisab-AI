@@ -1,4 +1,6 @@
 import uuid
+import csv
+import io
 from decimal import Decimal
 from datetime import datetime, timezone, date
 from typing import Optional, List
@@ -84,6 +86,66 @@ def list_payments(
         page=page,
         page_size=page_size,
         pages=pages,
+    )
+
+
+@router.get("/export", summary="Export payments as CSV spreadsheet")
+def export_payments_csv(
+    payment_type: Optional[str] = Query(None),
+    payment_method: Optional[str] = Query(None),
+    business: Business = Depends(get_active_business),
+    db: Session = Depends(get_db),
+) -> Response:
+    """Stream complete filtered payments dataset as CSV spreadsheet."""
+    query = (
+        db.query(Payment)
+        .options(joinedload(Payment.party))
+        .filter(Payment.business_id == business.id)
+    )
+    if payment_type:
+        query = query.filter(Payment.payment_type == payment_type)
+    if payment_method:
+        query = query.filter(Payment.payment_method == payment_method)
+
+    payments = query.order_by(Payment.payment_date.desc()).all()
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow([
+        "Voucher ID",
+        "Payment Date",
+        "Party Name",
+        "Payment Type",
+        "Payment Method",
+        "Reference Number",
+        "Amount (BDT)",
+        "Allocated Amount (BDT)",
+        "Unapplied Amount (BDT)",
+        "Status",
+    ])
+
+    for p in payments:
+        party_name = p.party.name if p.party else ""
+        writer.writerow([
+            str(p.id)[:8].upper(),
+            str(p.payment_date),
+            party_name,
+            p.payment_type,
+            p.payment_method,
+            p.reference_number or "",
+            str(p.amount),
+            str(p.allocated_amount),
+            str(p.unapplied_amount),
+            p.status,
+        ])
+
+    csv_data = output.getvalue()
+    filename = f"payments_export_{date.today()}.csv"
+
+    return Response(
+        content=csv_data,
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
 

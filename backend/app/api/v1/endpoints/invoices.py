@@ -1,4 +1,6 @@
 import uuid
+import csv
+import io
 from decimal import Decimal
 from datetime import datetime, timezone, date
 from typing import Optional, List
@@ -79,6 +81,71 @@ def list_invoices(
         page=page,
         page_size=page_size,
         pages=pages,
+    )
+
+
+@router.get("/export", summary="Export invoices as CSV spreadsheet")
+def export_invoices_csv(
+    invoice_type: Optional[str] = Query(None),
+    invoice_status: Optional[str] = Query(None, alias="status"),
+    party_id: Optional[uuid.UUID] = Query(None),
+    business: Business = Depends(get_active_business),
+    db: Session = Depends(get_db),
+) -> Response:
+    """Stream complete filtered invoices dataset as CSV spreadsheet."""
+    query = (
+        db.query(Invoice)
+        .options(joinedload(Invoice.party))
+        .filter(Invoice.business_id == business.id)
+    )
+    if invoice_type:
+        query = query.filter(Invoice.invoice_type == invoice_type)
+    if invoice_status:
+        query = query.filter(Invoice.status == invoice_status)
+    if party_id:
+        query = query.filter(Invoice.party_id == party_id)
+
+    invoices = query.order_by(Invoice.issue_date.desc()).all()
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow([
+        "Invoice Number",
+        "Invoice Type",
+        "Party Name",
+        "Issue Date",
+        "Due Date",
+        "Subtotal (BDT)",
+        "Tax Amount (BDT)",
+        "Total Amount (BDT)",
+        "Paid Amount (BDT)",
+        "Due Amount (BDT)",
+        "Status",
+    ])
+
+    for inv in invoices:
+        party_name = inv.party.name if inv.party else ""
+        writer.writerow([
+            inv.invoice_number,
+            inv.invoice_type,
+            party_name,
+            str(inv.issue_date),
+            str(inv.due_date or ""),
+            str(inv.subtotal),
+            str(inv.tax_amount),
+            str(inv.total_amount),
+            str(inv.paid_amount),
+            str(inv.due_amount),
+            inv.status,
+        ])
+
+    csv_data = output.getvalue()
+    filename = f"invoices_export_{date.today()}.csv"
+
+    return Response(
+        content=csv_data,
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
 
