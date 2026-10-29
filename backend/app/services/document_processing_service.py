@@ -9,6 +9,7 @@ from app.document_processing.pdf_text import extract_pdf_native_text
 from app.document_processing.providers.factory import get_ocr_provider
 from app.document_processing.providers.base import OCRConfigurationError, OCRError
 from app.document_processing.extraction.rule_extractor import extract_deterministic_fields
+from app.document_processing.extraction.gemini_extractor import extract_with_gemini, is_gemini_configured
 
 
 class DocumentProcessingService:
@@ -121,7 +122,15 @@ class DocumentProcessingService:
                 .all()
             )
             combined_text = "\n".join(p.raw_text or "" for p in all_pages)
-            cand = extract_deterministic_fields(combined_text, business_id, db)
+            
+            # 1. Attempt Google Gemini Multimodal Vision extraction if configured
+            cand = None
+            if is_gemini_configured():
+                cand = extract_with_gemini(content, doc.mime_type, business_id, db)
+            
+            # 2. Seamlessly fall back to deterministic rule extractor
+            if not cand:
+                cand = extract_deterministic_fields(combined_text, business_id, db)
 
             # Persist candidate fields in DocumentExtraction
             extraction = (

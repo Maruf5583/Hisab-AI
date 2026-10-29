@@ -33,10 +33,11 @@ class Settings(BaseSettings):
     GOOGLE_CLOUD_PROJECT: str = ""
     GOOGLE_APPLICATION_CREDENTIALS: str = ""
 
-    # LLM Fallback
-    LLM_FALLBACK_ENABLED: bool = False
+    # LLM Fallback & Vision AI
+    LLM_FALLBACK_ENABLED: bool = True
     LLM_PROVIDER: str = "gemini"
     GEMINI_API_KEY: str = ""
+    GEMINI_MODEL: str = "gemini-1.5-flash"
 
     # Redis
     REDIS_URL: str = "redis://localhost:6379/0"
