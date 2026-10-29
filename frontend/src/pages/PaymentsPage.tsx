@@ -6,6 +6,7 @@ import {
   ArrowDownLeft,
   ArrowUpRight,
   Wallet,
+  Download,
 } from 'lucide-react';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
@@ -310,18 +311,19 @@ export const PaymentsPage: React.FC<PaymentsPageProps> = ({ businessId, lang }) 
                 <th className="py-3 px-5">Reference / TrxID</th>
                 <th className="py-3 px-5 text-right">Amount</th>
                 <th className="py-3 px-5 text-center">Status</th>
+                <th className="py-3 px-5 text-right">Receipt PDF</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-xs text-slate-700 font-medium">
               {loading ? (
                 <tr>
-                  <td colSpan={7} className="py-8 text-center text-slate-400">
+                  <td colSpan={8} className="py-8 text-center text-slate-400">
                     Loading payments from database...
                   </td>
                 </tr>
               ) : filteredPayments.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="py-8 text-center text-slate-400">
+                  <td colSpan={8} className="py-8 text-center text-slate-400">
                     No payment records found matching criteria.
                   </td>
                 </tr>
@@ -354,6 +356,18 @@ export const PaymentsPage: React.FC<PaymentsPageProps> = ({ businessId, lang }) 
                       <Badge variant="success" size="sm">
                         {p.status}
                       </Badge>
+                    </td>
+                    <td className="py-3.5 px-5 text-right">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => paymentApi.downloadPdf(p.id)}
+                        title="Download Payment Voucher PDF"
+                        className="text-slate-600 hover:text-emerald-600"
+                      >
+                        <Download className="w-3.5 h-3.5 mr-1" />
+                        <span>Voucher</span>
+                      </Button>
                     </td>
                   </tr>
                 );

@@ -69,4 +69,24 @@ export const invoiceApi = {
       method: 'POST',
     });
   },
+
+  downloadPdf: async (id: string, invoiceNumber: string): Promise<void> => {
+    const token = localStorage.getItem('hisabai_token');
+    const activeBizId = localStorage.getItem('hisabai_active_business_id');
+    const headers: Record<string, string> = {};
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    if (activeBizId) headers['X-Business-Id'] = activeBizId;
+
+    const res = await fetch(`/api/v1/invoices/${id}/pdf`, { headers });
+    if (!res.ok) throw new Error('Failed to download invoice PDF');
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `Invoice-${invoiceNumber}.pdf`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  },
 };

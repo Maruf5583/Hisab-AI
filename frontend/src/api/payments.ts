@@ -66,4 +66,24 @@ export const paymentApi = {
       body: JSON.stringify({ allocations }),
     });
   },
+
+  downloadPdf: async (id: string): Promise<void> => {
+    const token = localStorage.getItem('hisabai_token');
+    const activeBizId = localStorage.getItem('hisabai_active_business_id');
+    const headers: Record<string, string> = {};
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    if (activeBizId) headers['X-Business-Id'] = activeBizId;
+
+    const res = await fetch(`/api/v1/payments/${id}/pdf`, { headers });
+    if (!res.ok) throw new Error('Failed to download payment receipt PDF');
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `Receipt-${id.slice(0, 8)}.pdf`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  },
 };

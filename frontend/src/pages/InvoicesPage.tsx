@@ -6,6 +6,7 @@ import {
   AlertCircle,
   TrendingUp,
   TrendingDown,
+  Download,
 } from 'lucide-react';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
@@ -374,7 +375,19 @@ export const InvoicesPage: React.FC<InvoicesPageProps> = ({ businessId, lang }) 
                       {inv.status.replace('_', ' ')}
                     </Badge>
                   </td>
-                  <td className="py-3.5 px-5 text-right">
+                  <td className="py-3.5 px-5 text-right flex items-center justify-end gap-1">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        invoiceApi.downloadPdf(inv.id, inv.invoice_number);
+                      }}
+                      title="Download Invoice PDF"
+                      className="text-slate-600 hover:text-blue-600"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                    </Button>
                     <Button
                       variant="ghost"
                       size="sm"
@@ -466,6 +479,14 @@ export const InvoicesPage: React.FC<InvoicesPageProps> = ({ businessId, lang }) 
             )}
 
             <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => invoiceApi.downloadPdf(selectedInvoice.id, selectedInvoice.invoice_number)}
+              >
+                <Download className="w-3.5 h-3.5 mr-1 text-blue-600" />
+                <span>Download Official PDF</span>
+              </Button>
               <Button variant="outline" size="sm" onClick={() => setSelectedInvoice(null)}>
                 Close
               </Button>

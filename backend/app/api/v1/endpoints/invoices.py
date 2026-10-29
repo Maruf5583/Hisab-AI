@@ -2,7 +2,7 @@ import uuid
 from decimal import Decimal
 from datetime import datetime, timezone, date
 from typing import Optional, List
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status, Response
 from sqlalchemy.orm import Session, joinedload
 
 from app.core.database import get_db
@@ -15,6 +15,7 @@ from app.models.audit import AuditLog
 from app.schemas.invoice import InvoiceCreate, InvoiceRead, InvoiceItemRead
 from app.schemas.common import PaginatedResponse
 from app.api.deps import get_current_user, get_active_business, require_business_role
+from app.services.pdf_service import pdf_service
 
 router = APIRouter()
 
@@ -378,3 +379,35 @@ def reverse_invoice(
     db.commit()
     db.refresh(inv)
     return InvoiceRead.model_validate(inv)
+
+
+@router.get("/{invoice_id}/pdf", summary="Generate and stream official branded invoice PDF")
+def download_invoice_pdf(
+    invoice_id: uuid.UUID,
+    business: Business = Depends(get_active_business),
+    db: Session = Depends(get_db),
+) -> Response:
+    """Generate and download formatted bilingual accounting invoice PDF."""
+    inv = (
+        db.query(Invoice)
+        .options(joinedload(Invoice.party), joinedload(Invoice.items))
+        .filter(Invoice.id == invoice_id, Invoice.business_id == business.id)
+        .first()
+    )
+    if not inv:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Invoice not found in active business workspace",
+        )
+
+    pdf_bytes = pdf_service.generate_invoice_pdf(inv, business, inv.party)
+    filename = f"Invoice-{inv.invoice_number}.pdf".replace(" ", "_")
+
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'inline; filename="{filename}"',
+        },
+    )
+

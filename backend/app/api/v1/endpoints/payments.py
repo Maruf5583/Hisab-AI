@@ -2,7 +2,7 @@ import uuid
 from decimal import Decimal
 from datetime import datetime, timezone, date
 from typing import Optional, List
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status, Response
 from sqlalchemy.orm import Session, joinedload
 
 from app.core.database import get_db
@@ -21,6 +21,7 @@ from app.schemas.payment import (
 )
 from app.schemas.common import PaginatedResponse
 from app.api.deps import get_current_user, get_active_business, require_business_role
+from app.services.pdf_service import pdf_service
 
 router = APIRouter()
 
@@ -337,3 +338,35 @@ def allocate_payment(
     if payment.party:
         res.party_name = payment.party.name
     return res
+
+
+@router.get("/{payment_id}/pdf", summary="Generate and stream official money receipt / voucher PDF")
+def download_payment_pdf(
+    payment_id: uuid.UUID,
+    business: Business = Depends(get_active_business),
+    db: Session = Depends(get_db),
+) -> Response:
+    """Generate and download official branded money receipt PDF."""
+    payment = (
+        db.query(Payment)
+        .options(joinedload(Payment.party), joinedload(Payment.allocations))
+        .filter(Payment.id == payment_id, Payment.business_id == business.id)
+        .first()
+    )
+    if not payment:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Payment voucher not found in active business workspace",
+        )
+
+    pdf_bytes = pdf_service.generate_payment_receipt_pdf(payment, business, payment.party)
+    filename = f"Receipt-{str(payment.id)[:8]}.pdf"
+
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'inline; filename="{filename}"',
+        },
+    )
+
